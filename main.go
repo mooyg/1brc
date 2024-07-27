@@ -8,13 +8,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 func main() {
 
-	m := readFileIntoMap("./measurements.txt")
-	log.Println(len(m))
+	readFileIntoMap("./measurements.txt")
 
 }
 
@@ -28,14 +26,8 @@ type CityTemp struct {
 
 type CityMap = map[string]CityTemp
 
-type ResultChanTemp struct {
-	city string
-	temp float64
-}
-
 func readFileIntoMap(filepath string) CityMap {
-	mapOfTemp := make(chan CityMap, 1)
-	mapOfTemp <- make(CityMap)
+	mapOfTemp := make(CityMap)
 
 	f, err := os.Open(filepath)
 
@@ -45,85 +37,54 @@ func readFileIntoMap(filepath string) CityMap {
 
 	r := bufio.NewReader(f)
 
-	var wg sync.WaitGroup
-
 	i := 0
-
-	lineChan := make(chan string)
-	resultChan := make(chan ResultChanTemp)
-
 	for {
 		i++
-		wg.Add(1)
-
 		line, err := r.ReadString('\n')
-
-		if i%10000 == 0 {
-			log.Println(i)
-		}
-
-		go func() {
-			defer wg.Done()
-			for line := range lineChan {
-				city, temp := parseLine(line)
-
-				resultChan <- ResultChanTemp{city: city, temp: temp}
-			}
-		}()
-
-		go func() {
-			for result := range resultChan {
-				m := <-mapOfTemp
-				updateMap(m, result.city, result.temp)
-				mapOfTemp <- m
-			}
-		}()
 
 		if err != nil {
 			if err == io.EOF {
-				break
+				return mapOfTemp
 			}
 			log.Fatal("some error occured", err)
 		}
 
-		lineChan <- line
-	}
+		index := strings.Index(line, ";")
+		city := line[:index]
+		temp := line[index+1 : len(line)-1]
 
-	wg.Wait()
-	return <-mapOfTemp
+		num, err := strconv.ParseFloat(temp, 64)
 
-}
-
-func parseLine(line string) (string, float64) {
-	index := strings.Index(line, ";")
-	city := line[:index]
-	temp := line[index+1 : len(line)-1]
-
-	num, err := strconv.ParseFloat(temp, 64)
-
-	if err != nil {
-		log.Fatal("string conversion failed", err)
-
-	}
-	return city, num
-}
-
-func updateMap(mapOfTemp CityMap, city string, num float64) {
-	if current, ok := mapOfTemp[city]; ok {
-		mapOfTemp[city] = CityTemp{
-			min:     math.Min(current.min, num),
-			max:     math.Max(current.max, num),
-			visited: current.visited + 1,
-			mean:    (current.sum + num) / float64(current.visited+1),
-			sum:     current.sum + num,
+		if i%10000 == 0 {
+			log.Println("at count", i)
 		}
-	} else {
-		mapOfTemp[city] = CityTemp{
-			min:     num,
-			max:     num,
-			mean:    num,
-			visited: 1,
-			sum:     num,
+
+		if err != nil {
+			log.Fatal("string conversion failed", err)
+
+		}
+
+		if _, ok := mapOfTemp[city]; ok {
+
+			current := mapOfTemp[city]
+
+			mapOfTemp[city] = CityTemp{
+				min:     math.Min(current.min, num),
+				max:     math.Max(current.max, num),
+				visited: current.visited + 1,
+				mean:    current.sum/float64(current.visited) + 1,
+				sum:     current.sum + num,
+			}
+
+		} else {
+			mapOfTemp[city] = CityTemp{
+				min:     math.Inf(1),
+				max:     math.Inf(-1),
+				mean:    num,
+				visited: 1,
+				sum:     num,
+			}
 		}
 	}
+
 }
