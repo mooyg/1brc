@@ -66,7 +66,6 @@ func readFileIntoMap(filepath string) CityMap {
 	}
 	for {
 		i++
-		wg.Add(1)
 
 		line, err := r.ReadString('\n')
 
