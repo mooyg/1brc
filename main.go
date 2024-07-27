@@ -50,8 +50,20 @@ func readFileIntoMap(filepath string) CityMap {
 	i := 0
 
 	lineChan := make(chan string)
-	resultChan := make(chan ResultChanTemp)
 
+	numWorkers := 10
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for line := range lineChan {
+				city, temp := parseLine(line)
+				m := <-mapOfTemp
+				updateMap(m, city, temp)
+				mapOfTemp <- m
+			}
+		}()
+	}
 	for {
 		i++
 		wg.Add(1)
@@ -62,23 +74,6 @@ func readFileIntoMap(filepath string) CityMap {
 			log.Println(i)
 		}
 
-		go func() {
-			defer wg.Done()
-			for line := range lineChan {
-				city, temp := parseLine(line)
-
-				resultChan <- ResultChanTemp{city: city, temp: temp}
-			}
-		}()
-
-		go func() {
-			for result := range resultChan {
-				m := <-mapOfTemp
-				updateMap(m, result.city, result.temp)
-				mapOfTemp <- m
-			}
-		}()
-
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -88,6 +83,7 @@ func readFileIntoMap(filepath string) CityMap {
 
 		lineChan <- line
 	}
+	close(lineChan)
 
 	wg.Wait()
 	return <-mapOfTemp
